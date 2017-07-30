@@ -41,12 +41,16 @@ public:
     static MString      COMMAND_NAME;
 
 private:
+    MDagPath            inMesh;
+    MObject             components;
+
     MString             axis;
     MObject             boneObj;
-    MDagPath            inMesh;
     double              boneLength;
     bool                constructionHistory;
+    int                 fillPartialLoopsMethod;
     bool                showHelp;
+    double              radius;
     int                 subdivisionsX;
     int                 subdivisionsY;
     bool                useWorldDirection;

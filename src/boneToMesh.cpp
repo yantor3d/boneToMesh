@@ -8,14 +8,17 @@
 
 #include "boneToMesh.h"
 
+#include <algorithm>
+#include <cfloat>
 #include <cmath>
-#include <stdio.h>
 #include <vector>
 
 #include <maya/MFloatArray.h>
 #include <maya/MFloatPoint.h>
 #include <maya/MFloatPointArray.h>
 #include <maya/MFloatVector.h>
+#include <maya/MFnComponentListData.h>
+#include <maya/MFnSingleIndexedComponent.h>
 #include <maya/MFnMesh.h>
 #include <maya/MIntArray.h>
 #include <maya/MMatrix.h>
@@ -26,14 +29,23 @@
 #include <maya/MTransformationMatrix.h>
 #include <maya/MVector.h>
 
+const short FILL_NONE     = 0;
+const short FILL_SHORTEST = 1;
+const short FILL_LONGEST  = 2;
+const short FILL_AVERAGE  = 3;
+const short FILL_RADIUS   = 4;
+
 MStatus boneToMesh(
     const MObject &inMesh, 
+    const MObject &components,
     const MMatrix &boneMatrix, 
     const MMatrix &directionMatrix, 
     const double boneLength, 
     const uint subdivisionsAxis, 
     const uint subdivisionsHeight, 
     const short direction,
+    const short fillPartialLoopsMethod,
+    const float radius,
     MObject &outMesh
 ) {
     MStatus status;
@@ -85,10 +97,35 @@ MStatus boneToMesh(
     
     int vertexIndex = 0;
 
+    bool useComponents = !components.isNull();
+
+    MIntArray faceIds;
+    MIntArray* faceIds_ptr = NULL;
+
+    if (useComponents)
+    {
+        MFnSingleIndexedComponent fnComponents(components);
+
+        int numComponents = fnComponents.elementCount();
+        faceIds.setLength(numComponents);
+
+        for (int i = 0; i < numComponents; i++)
+        {
+            faceIds[i] = fnComponents.element(i);
+        }
+
+        faceIds_ptr = &faceIds;
+    }
+
+    std::vector<MFloatPoint> raySources(subdivisionsHeight);
+    std::vector<MFloatVector> rayDirections(subdivisionsHeight * subdivisionsAxis);
+
     for (uint sh = 0; sh < subdivisionsHeight; sh++)
     {
         double t = float(sh) / float(subdivisionsHeight - 1);
         raySource = MFloatPoint(startPoint + (directionVector * t));
+
+        raySources[sh] = raySource; 
 
         MTransformationMatrix dxMatrix(directionMatrix);
         dxMatrix.setTranslation(MVector(raySource), MSpace::kWorld);
@@ -105,7 +142,7 @@ MStatus boneToMesh(
             bool hits = inMeshFn.allIntersections(
                 raySource, 
                 rayDirection,
-                NULL,           // face Ids
+                faceIds_ptr,    
                 NULL,           // tri Ids
                 true,           // sort ids 
                 MSpace::kObject,// space
@@ -123,9 +160,11 @@ MStatus boneToMesh(
                 &status
             );
 
+            uint idx = (sh * subdivisionsAxis) + sa;
+            rayDirections[idx] = rayDirection;
+
             if (hits)
             {
-                uint idx = (sh * subdivisionsAxis) + sa;
                 indices[idx] = vertexIndex++;
                 points[idx] = MFloatPoint(hitPoints[0]);
             }
@@ -133,6 +172,80 @@ MStatus boneToMesh(
             CHECK_MSTATUS(status);
         }
     } 
+
+    if (fillPartialLoopsMethod != FILL_NONE)
+    {
+        // Fill in missing points.
+        for (uint sh = 0; sh < subdivisionsHeight; sh++)
+        {
+            raySource = raySources[sh];
+
+            int numHits = 0;
+
+            float rayLength = fillPartialLoopsMethod == FILL_SHORTEST ? FLT_MAX : 0.0f;
+
+            for (uint sa = 0; sa < subdivisionsAxis; sa++)
+            {
+                uint idx = (sh * subdivisionsAxis) + sa;
+
+                if (indices[idx] != -1) 
+                {
+                    switch (fillPartialLoopsMethod)
+                    {
+                        case FILL_SHORTEST: 
+                            rayLength = std::min(rayLength, (points[idx] - raySource).length());
+                            break;
+                        case FILL_LONGEST: 
+                            rayLength = std::max(rayLength, (points[idx] - raySource).length());
+                            break;
+                        case FILL_AVERAGE: 
+                            rayLength += (points[idx] - raySource).length();
+                            break;
+                    }
+                    
+                    numHits++;
+                }
+            }
+
+            if (numHits == 0 || numHits == (subdivisionsAxis - 1)) 
+            {
+                continue; 
+            }
+
+            switch(fillPartialLoopsMethod)
+            {
+                case FILL_AVERAGE: rayLength /= float(numHits); break;
+                case FILL_RADIUS:  rayLength = radius; break;
+            }
+
+            for (uint sa = 0; sa < subdivisionsAxis; sa++)
+            {
+                uint idx = (sh * subdivisionsAxis) + sa;
+
+                if (indices[idx] == -1) 
+                {
+                    indices[idx] = vertexIndex++;
+                    points[idx] = raySource + (rayDirections[idx] * rayLength);
+                }
+            }
+        }
+
+        // Reset the vertex indices
+        vertexIndex = 0;
+
+        for (uint sh = 0; sh < subdivisionsHeight; sh++)
+        {
+            for (uint sa = 0; sa < subdivisionsAxis; sa++)
+            {
+                uint idx = (sh * subdivisionsAxis) + sa;
+
+                if (indices[idx] != -1) 
+                {
+                    indices[idx] = vertexIndex++; 
+                }
+            }
+        }
+    }
 
     int maxVertices = subdivisionsAxis * subdivisionsHeight;
     int maxPolygons = subdivisionsAxis * subdivisionsHeight;

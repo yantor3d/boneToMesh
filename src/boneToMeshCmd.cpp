@@ -6,16 +6,20 @@
 #include "boneToMesh.h"
 #include "boneToMeshCmd.h"
 
+#include <algorithm>
+
 #include <maya/MArgList.h>
 #include <maya/MArgDatabase.h>
 #include <maya/MDagModifier.h>
 #include <maya/MDGModifier.h>
 #include <maya/MFn.h>
+#include <maya/MFnComponentListData.h>
 #include <maya/MFnDagNode.h>
 #include <maya/MFnDependencyNode.h>
 #include <maya/MFnMatrixData.h>
 #include <maya/MFnTransform.h>
 #include <maya/MGlobal.h>
+#include <maya/MItMeshPolygon.h>
 #include <maya/MObject.h>
 #include <maya/MPlug.h>
 #include <maya/MSelectionList.h>
@@ -26,7 +30,6 @@
 
 #define RETURN_IF_ERROR(s) if (!s) { return s; }
 
-
 const char* AXIS_FLAG = "-a";
 const char* AXIS_LONG = "-axis"; 
 
@@ -36,11 +39,17 @@ const char* BONE_LONG = "-bone";
 const char* CONSTRUCTION_HISTORY_FLAG = "-ch";
 const char* CONSTRUCTION_HISTORY_LONG = "-constructionHistory";
 
+const char* FILL_PARTIAL_LOOPS_FLAG = "-fp";
+const char* FILL_PARTIAL_LOOPS_LONG = "-fillPartialLoops";
+
 const char* HELP_FLAG = "-h";
 const char* HELP_LONG = "-help";
 
 const char* LENGTH_FLAG = "-l";
 const char* LENGTH_LONG = "-length";
+
+const char* RADIUS_FLAG = "-r";
+const char* RADIUS_LONG = "-radius";
 
 const char* SUBDIVISIONS_X_FLAG = "-sx";
 const char* SUBDIVISIONS_X_LONG = "-subdivisionsX";
@@ -79,10 +88,13 @@ void BoneToMeshCommand::help()
         "\n"
         "FLAGS\n"
         "Long Name            Short Name   Argument Type(s)    Description\n"
-        "-axis                -a           string              Long axis of the bone. Accepted values as \"x\", \"y\", or \"z\".\n"
+        "-axis                -a           string              Long axis of the bone. Accepted values are \"x\", \"y\", or \"z\".\n"
         "-bone                -b           string              Transform at the base of the \"bone\".\n"
         "-constructionHistory -ch          boolean             Toggles construction history on/off.\n"
+        "-fillPartialLoops    -fp          string              Method by which partial loops have their missing points filled\n"
+        "                                                      Accepted values are 0 - \"none\", 1 - \"shortest\", 2 - \"longest\", 3 - \"average\", or 4 - \"radius\".\n"
         "-length              -l           double              Length of the bone.\n"
+        "-radius              -r           double              Distance from the bone of filled in points if -fillPartialLoops is set to \"radius\".\n"
         "-subdivisionsX       -sx          int                 Specifies the number of subdivisions around the bone.\n"
         "-subdivisionsY       -sy          int                 Specifies the number of subdivisions along the bone.\n"
         "-world               -w           boolean             Toggles the axis between world and local.\n"
@@ -116,8 +128,9 @@ MStatus BoneToMeshCommand::parseArguments(MArgDatabase &argsData)
             return MStatus::kFailure;
         }
 
-        selection.getDagPath(0, this->inMesh);
+        selection.getDagPath(0, this->inMesh, this->components);
     }
+
     
     // -axis flag
     if (argsData.isFlagSet(AXIS_FLAG))
@@ -164,6 +177,18 @@ MStatus BoneToMeshCommand::parseArguments(MArgDatabase &argsData)
         this->constructionHistory = false;
     }    
 
+    // -fillPartialLoops flag
+    if (argsData.isFlagSet(FILL_PARTIAL_LOOPS_FLAG))
+    {
+        status = argsData.getFlagArgument(FILL_PARTIAL_LOOPS_FLAG, 0, this->fillPartialLoopsMethod);
+        CHECK_MSTATUS_AND_RETURN_IT(status);
+
+        if (this->fillPartialLoopsMethod < 0) { this->fillPartialLoopsMethod = 0; }
+        if (this->fillPartialLoopsMethod > 4) { this->fillPartialLoopsMethod = 4; }
+    } else {
+        this->fillPartialLoopsMethod = 3;
+    }
+
     // -length flag
     if (argsData.isFlagSet(LENGTH_FLAG))
     {
@@ -173,7 +198,16 @@ MStatus BoneToMeshCommand::parseArguments(MArgDatabase &argsData)
         this->boneLength = 1.0;
     }
 
-    // -subdivisionsX (axis)
+    // -radius flag
+    if (argsData.isFlagSet(RADIUS_FLAG))
+    {
+        status = argsData.getFlagArgument(RADIUS_FLAG, 0, this->radius);
+        CHECK_MSTATUS_AND_RETURN_IT(status);
+    } else {
+        this->radius = 1.0;
+    }
+
+    // -subdivisionsX (axis) flag
     if (argsData.isFlagSet(SUBDIVISIONS_X_FLAG))
     {
         status = argsData.getFlagArgument(SUBDIVISIONS_X_FLAG, 0, this->subdivisionsX);
@@ -182,7 +216,7 @@ MStatus BoneToMeshCommand::parseArguments(MArgDatabase &argsData)
         this->subdivisionsX = 8;
     }
 
-    // -subdivisionsY (height)
+    // -subdivisionsY (height) flag 
     if (argsData.isFlagSet(SUBDIVISIONS_Y_FLAG))
     {
         status = argsData.getFlagArgument(SUBDIVISIONS_Y_FLAG, 0, this->subdivisionsY);
@@ -214,7 +248,7 @@ MStatus BoneToMeshCommand::validateArguments()
         this->axis != "y" &&
         this->axis != "z"
     ) {
-        MGlobal::displayError("Must specify \"x\", \"y\", or \"z\" for the axis.");
+        MGlobal::displayError("-axis/-a flag must be set to \"x\", \"y\", or \"z\".");
         return MStatus::kFailure;
     }
     
@@ -255,8 +289,10 @@ MSyntax BoneToMeshCommand::getSyntax()
     syntax.addFlag(AXIS_FLAG, AXIS_LONG, MSyntax::kString);
     syntax.addFlag(BONE_FLAG, BONE_LONG, MSyntax::kString);
     syntax.addFlag(CONSTRUCTION_HISTORY_FLAG, CONSTRUCTION_HISTORY_LONG, MSyntax::kBoolean);
+    syntax.addFlag(FILL_PARTIAL_LOOPS_FLAG, FILL_PARTIAL_LOOPS_LONG, MSyntax::kLong);
     syntax.addFlag(HELP_FLAG, HELP_LONG, MSyntax::kBoolean);
     syntax.addFlag(LENGTH_FLAG, LENGTH_LONG, MSyntax::kDouble);
+    syntax.addFlag(RADIUS_FLAG, RADIUS_LONG, MSyntax::kDouble);
     syntax.addFlag(SUBDIVISIONS_X_FLAG, SUBDIVISIONS_X_LONG, MSyntax::kLong);
     syntax.addFlag(SUBDIVISIONS_Y_FLAG, SUBDIVISIONS_Y_LONG, MSyntax::kLong);
     syntax.addFlag(WORLD_SPACE_FLAG, WORLD_SPACE_LONG, MSyntax::kBoolean);
@@ -331,12 +367,15 @@ MStatus BoneToMeshCommand::redoIt()
 
     status = boneToMesh(
         inMeshObj,
+        this->components,
         boneMatrix,
         directionMatrix,
         this->boneLength,
         this->subdivisionsX,
         this->subdivisionsY,
         direction,
+        (short) fillPartialLoopsMethod,
+        (float) this->radius,
         newMesh
     );
 
@@ -373,6 +412,27 @@ MStatus BoneToMeshCommand::redoIt()
         MFnDependencyNode fnNode(newNode);
         MFnDependencyNode fnNewMesh(newMesh);
 
+        if (!this->components.isNull())
+        {
+            MFnComponentListData fnComponentList;
+            MObject componentList = fnComponentList.create();
+
+            MItMeshPolygon itPoly(this->inMesh, this->components);
+
+            while (!itPoly.isDone())
+            {
+                MObject c = itPoly.currentItem();
+                status = fnComponentList.add(c);
+                CHECK_MSTATUS_AND_RETURN_IT(status);
+
+                itPoly.next();
+            }
+
+            MPlug node_componentsPlug = fnNode.findPlug("components", false);
+            status = node_componentsPlug.setMObject(componentList);
+            CHECK_MSTATUS_AND_RETURN_IT(status);
+        }
+
         MPlug inMesh_worldMeshPlug     = fnInMesh.findPlug("worldMesh", false, &status).elementByLogicalIndex(0);
         MPlug bone_worldMatrixPlug     = fnBone.findPlug("worldMatrix", false, &status).elementByLogicalIndex(0);
         
@@ -380,8 +440,8 @@ MStatus BoneToMeshCommand::redoIt()
         MPlug node_boneMatrixPlug      = fnNode.findPlug("boneMatrix", false);
         MPlug node_directionMatrixPlug = fnNode.findPlug("directionMatrix", false);
         MPlug node_boneLengthPlug      = fnNode.findPlug("boneLength", false);
-        MPlug node_subdivisionsXPlug   = fnNode.findPlug("subdivisionsX", false);
-        MPlug node_subdivisionsYPlug   = fnNode.findPlug("subdivisionsY", false);
+        MPlug node_subdivisionsXPlug   = fnNode.findPlug("subdivisionsAxis", false);
+        MPlug node_subdivisionsYPlug   = fnNode.findPlug("subdivisionsHeight", false);
         MPlug node_directionPlug       = fnNode.findPlug("direction", false);
         MPlug node_outMeshPlug         = fnNode.findPlug("outMesh", false);
 
@@ -398,8 +458,8 @@ MStatus BoneToMeshCommand::redoIt()
         node_directionMatrixPlug.setMObject(directionMatrixData);
 
         node_boneLengthPlug.setDouble(boneLength);
-        node_subdivisionsXPlug.setInt(subdivisionsX);
-        node_subdivisionsYPlug.setInt(subdivisionsY);
+        status = node_subdivisionsXPlug.setInt(subdivisionsX);
+        status = node_subdivisionsYPlug.setInt(subdivisionsY);
         node_directionPlug.setShort(direction);
 
         status = dgMod.connect(node_outMeshPlug, newMesh_inMeshPlug);

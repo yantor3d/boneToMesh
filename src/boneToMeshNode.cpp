@@ -7,11 +7,11 @@
 #include "boneToMeshNode.h"
 
 #include <algorithm>
-#include <stdio.h>
 
 #include <maya/MDataBlock.h>
 #include <maya/MDataHandle.h>
 #include <maya/MFn.h>
+#include <maya/MFnComponentListData.h>
 #include <maya/MFnData.h>
 #include <maya/MFnEnumAttribute.h>
 #include <maya/MFnNumericAttribute.h>
@@ -20,6 +20,7 @@
 #include <maya/MFnMatrixData.h>
 #include <maya/MFnMesh.h>
 #include <maya/MFnMeshData.h>
+#include <maya/MFnSingleIndexedComponent.h>
 #include <maya/MGlobal.h>
 #include <maya/MIntArray.h>
 #include <maya/MMatrix.h>
@@ -31,12 +32,15 @@
 
 // Input attributes
 MObject BoneToMeshNode::inMesh_attr;
+MObject BoneToMeshNode::components_attr;
 MObject BoneToMeshNode::boneMatrix_attr;
 MObject BoneToMeshNode::directionMatrix_attr;
 MObject BoneToMeshNode::boneLength_attr;
 MObject BoneToMeshNode::subdivisionsAxis_attr;
 MObject BoneToMeshNode::subdivisionsHeight_attr;
 MObject BoneToMeshNode::direction_attr;
+MObject BoneToMeshNode::fillPartialLoops_attr;
+MObject BoneToMeshNode::radius_attr;
 
 // Output attributes
 MObject BoneToMeshNode::outMesh_attr;
@@ -55,16 +59,17 @@ MStatus BoneToMeshNode::compute(const MPlug &plug, MDataBlock &dataBlock)
         return MStatus::kUnknownParameter;
     }
 
-    MObject inMesh = dataBlock.inputValue(inMesh_attr).data();
-
-    MMatrix boneMatrix = MFnMatrixData(dataBlock.inputValue(boneMatrix_attr).data()).matrix();
-    MMatrix directionMatrix = MFnMatrixData(dataBlock.inputValue(directionMatrix_attr).data()).matrix();
-
-    double boneLength = dataBlock.inputValue(boneLength_attr).asDouble();
-    short direction = dataBlock.inputValue(direction_attr).asShort();
-
-    uint subdivisionsAxis = (uint) std::max(4, dataBlock.inputValue(subdivisionsAxis_attr).asLong());
-    uint subdivisionsHeight = (uint) std::max(2, dataBlock.inputValue(subdivisionsHeight_attr).asLong());
+    MObject inMesh             = dataBlock.inputValue(inMesh_attr).data();
+    double  boneLength         = dataBlock.inputValue(boneLength_attr).asDouble();
+    MMatrix boneMatrix         = MFnMatrixData(dataBlock.inputValue(boneMatrix_attr).data()).matrix();
+    MObject componentsList     = dataBlock.inputValue(components_attr).data();
+    short   direction          = dataBlock.inputValue(direction_attr).asShort();
+    MMatrix directionMatrix    = MFnMatrixData(dataBlock.inputValue(directionMatrix_attr).data()).matrix();
+    short   fillPartialLoops   = dataBlock.inputValue(fillPartialLoops_attr).asShort();
+    double  radius             = dataBlock.inputValue(radius_attr).asDouble();
+    uint    subdivisionsAxis   = (uint) std::max(4, dataBlock.inputValue(subdivisionsAxis_attr).asLong());
+    uint    subdivisionsHeight = (uint) std::max(2, dataBlock.inputValue(subdivisionsHeight_attr).asLong());
+    MObject components = this->unpackComponentList(componentsList);
 
     MDataHandle outMeshHandle = dataBlock.outputValue(outMesh_attr);
 
@@ -78,12 +83,15 @@ MStatus BoneToMeshNode::compute(const MPlug &plug, MDataBlock &dataBlock)
     } else {
         status = boneToMesh(
             inMesh, 
+            components,
             boneMatrix, 
             directionMatrix,
             boneLength, 
             subdivisionsAxis, 
             subdivisionsHeight, 
             direction, 
+            fillPartialLoops,
+            (float) radius,
             outMesh
         );
         CHECK_MSTATUS_AND_RETURN_IT(status);
@@ -104,6 +112,39 @@ MStatus BoneToMeshNode::compute(const MPlug &plug, MDataBlock &dataBlock)
 }
 
 
+MObject BoneToMeshNode::unpackComponentList(MObject &componentList)
+{
+    MObject components;
+
+    if (!componentList.isNull())
+    {
+        MFnComponentListData fnComponentList(componentList);
+        MFnSingleIndexedComponent fnComponents;
+        components = fnComponents.create(MFn::kMeshPolygonComponent);
+
+        uint numComponents = fnComponentList.length();
+
+        for (uint i = 0; i < numComponents; i++)
+        {
+            MObject c = fnComponentList[i];
+
+            if (c.apiType() == MFn::kMeshPolygonComponent)
+            {
+                MFnSingleIndexedComponent fnComponent(c);
+                int n = fnComponent.elementCount();
+
+                for (int j = 0; j < n; j++)
+                {
+                    fnComponents.addElement(fnComponent.element(j));
+                }
+            }
+        }
+    }
+
+    return components;
+}
+
+
 MStatus BoneToMeshNode::initialize()
 {
     MStatus status;
@@ -115,6 +156,9 @@ MStatus BoneToMeshNode::initialize()
     inMesh_attr = typedAttr.create("inMesh", "im", MFnData::kMesh, MObject::kNullObj, &status);
     CHECK_MSTATUS_AND_RETURN_IT(status);
 
+    components_attr = typedAttr.create("components", "c", MFnData::kComponentList, MObject::kNullObj, &status);
+    CHECK_MSTATUS_AND_RETURN_IT(status);
+
     boneMatrix_attr = typedAttr.create("boneMatrix", "bm", MFnData::kMatrix, MObject::kNullObj, &status);
     CHECK_MSTATUS_AND_RETURN_IT(status);
 
@@ -123,6 +167,28 @@ MStatus BoneToMeshNode::initialize()
 
     boneLength_attr = numAttr.create("boneLength", "len",  MFnNumericData::kDouble, 1.0, &status);
     CHECK_MSTATUS_AND_RETURN_IT(status);
+    numAttr.setKeyable(true);
+    numAttr.setKeyable(true);
+
+    direction_attr = enumAttr.create("direction", "d", X_AXIS, &status);
+    CHECK_MSTATUS_AND_RETURN_IT(status);
+    enumAttr.setKeyable(true);
+    enumAttr.addField("X", X_AXIS);
+    enumAttr.addField("Y", Y_AXIS);
+    enumAttr.addField("Z", Z_AXIS);
+
+    fillPartialLoops_attr = enumAttr.create("fillPartialLoops", "fp", 3, &status);
+    CHECK_MSTATUS_AND_RETURN_IT(status);
+    enumAttr.addField("No Fill",  0),
+    enumAttr.addField("Shortest", 1);
+    enumAttr.addField("Longest",  2);
+    enumAttr.addField("Average",  3);
+    enumAttr.addField("Radius",   4);
+    enumAttr.setKeyable(true);
+
+    radius_attr = numAttr.create("radius", "r", MFnNumericData::kDouble, 1.0, &status);
+    CHECK_MSTATUS_AND_RETURN_IT(status);
+    numAttr.setMin(0.0);
     numAttr.setKeyable(true);
 
     subdivisionsAxis_attr = numAttr.create("subdivisionsAxis", "sa", MFnNumericData::kLong, 0, &status);
@@ -137,33 +203,32 @@ MStatus BoneToMeshNode::initialize()
     numAttr.setMin(1);
     numAttr.setKeyable(true);
 
-    direction_attr = enumAttr.create("direction", "d", X_AXIS, &status);
-    CHECK_MSTATUS_AND_RETURN_IT(status);
-    enumAttr.setKeyable(true);
-    enumAttr.addField("X", X_AXIS);
-    enumAttr.addField("Y", Y_AXIS);
-    enumAttr.addField("Z", Z_AXIS);
-
     outMesh_attr = typedAttr.create("outMesh", "om", MFnData::kMesh, MObject::kNullObj, &status);
     CHECK_MSTATUS_AND_RETURN_IT(status);
     typedAttr.setStorable(false);
 
     addAttribute(inMesh_attr);
-    addAttribute(boneMatrix_attr);
-    addAttribute(directionMatrix_attr);
     addAttribute(boneLength_attr);
+    addAttribute(boneMatrix_attr);
+    addAttribute(components_attr);
+    addAttribute(direction_attr);
+    addAttribute(directionMatrix_attr);
+    addAttribute(fillPartialLoops_attr);
+    addAttribute(radius_attr);
     addAttribute(subdivisionsAxis_attr);
     addAttribute(subdivisionsHeight_attr);
-    addAttribute(direction_attr);
     addAttribute(outMesh_attr);
 
     attributeAffects(inMesh_attr, outMesh_attr);
     attributeAffects(boneMatrix_attr, outMesh_attr);
-    attributeAffects(directionMatrix_attr, outMesh_attr);
     attributeAffects(boneLength_attr, outMesh_attr);
+    attributeAffects(components_attr, outMesh_attr);
+    attributeAffects(fillPartialLoops_attr, outMesh_attr);
+    attributeAffects(direction_attr, outMesh_attr);
+    attributeAffects(directionMatrix_attr, outMesh_attr);
+    attributeAffects(radius_attr, outMesh_attr);
     attributeAffects(subdivisionsAxis_attr, outMesh_attr);
     attributeAffects(subdivisionsHeight_attr, outMesh_attr);
-    attributeAffects(direction_attr, outMesh_attr);
 
     return MStatus::kSuccess;
 }

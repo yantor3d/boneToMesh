@@ -12,12 +12,15 @@
 
 MStatus boneToMesh(
     const MObject &inMesh, 
+    const MObject &components,
     const MMatrix &boneMatrix, 
     const MMatrix &directionMatrix, 
     const double boneLength, 
     const uint subdivisionsAxis, 
     const uint subdivisionsHeight, 
     const short direction,
+    const short fillPartialLoopsMethod,
+    const float radius,
     MObject &outMesh
 );
 
