@@ -1,3 +1,9 @@
+# user defined
+[Bb]uild
+.vscode
+*.bat
+tests
+
 # Prerequisites
 *.d
 
