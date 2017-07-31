@@ -15,6 +15,7 @@ MStatus boneToMesh(
     const MObject &components,
     const MMatrix &boneMatrix, 
     const MMatrix &directionMatrix, 
+    const double maxDistance,
     const double boneLength, 
     const uint subdivisionsAxis, 
     const uint subdivisionsHeight, 

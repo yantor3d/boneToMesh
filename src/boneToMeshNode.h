@@ -30,16 +30,18 @@ public:
     static MTypeId      NODE_ID;
 
 private:
-    static MObject      inMesh_attr;
-    static MObject      components_attr;
-    static MObject      boneMatrix_attr;
-    static MObject      directionMatrix_attr;
     static MObject      boneLength_attr;
+    static MObject      boneMatrix_attr;
+    static MObject      components_attr;
+    static MObject      direction_attr;
+    static MObject      directionMatrix_attr;
+    static MObject      fillPartialLoops_attr;
+    static MObject      inMesh_attr;
+    static MObject      maxDistance_attr;
     static MObject      subdivisionsAxis_attr;
     static MObject      subdivisionsHeight_attr;
-    static MObject      direction_attr;
-    static MObject      fillPartialLoops_attr;
     static MObject      radius_attr;
+    static MObject      useMaxDistance_attr;
 
     static MObject      outMesh_attr;
 };

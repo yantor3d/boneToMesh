@@ -48,6 +48,9 @@ const char* HELP_LONG = "-help";
 const char* LENGTH_FLAG = "-l";
 const char* LENGTH_LONG = "-length";
 
+const char* MAX_DISTANCE_FLAG = "-md";
+const char* MAX_DISTANCE_LONG = "-maxDistance";
+
 const char* RADIUS_FLAG = "-r";
 const char* RADIUS_LONG = "-radius";
 
@@ -94,6 +97,7 @@ void BoneToMeshCommand::help()
         "-fillPartialLoops    -fp          string              Method by which partial loops have their missing points filled\n"
         "                                                      Accepted values are 0 - \"none\", 1 - \"shortest\", 2 - \"longest\", 3 - \"average\", or 4 - \"radius\".\n"
         "-length              -l           double              Length of the bone.\n"
+        "-maxDistance         -md          double              Maximum distance from the bone an intersection with the mesh may occur.\n"
         "-radius              -r           double              Distance from the bone of filled in points if -fillPartialLoops is set to \"radius\".\n"
         "-subdivisionsX       -sx          int                 Specifies the number of subdivisions around the bone.\n"
         "-subdivisionsY       -sy          int                 Specifies the number of subdivisions along the bone.\n"
@@ -151,14 +155,13 @@ MStatus BoneToMeshCommand::parseArguments(MArgDatabase &argsData)
         CHECK_MSTATUS_AND_RETURN_IT(status);
 
         status = selection.add(objectName);
-        CHECK_MSTATUS_AND_RETURN_IT(status);
 
         if (status)
         {
             status = selection.getDependNode(0, this->boneObj);    
             RETURN_IF_ERROR(status);
         } else {
-            MString errorMsg("Object '^1s'' does not exist.");
+            MString errorMsg("Object '^1s does not exist.");
             errorMsg.format(errorMsg, objectName);
             MGlobal::displayError(errorMsg);
             return status;
@@ -196,6 +199,18 @@ MStatus BoneToMeshCommand::parseArguments(MArgDatabase &argsData)
         CHECK_MSTATUS_AND_RETURN_IT(status);
     } else {
         this->boneLength = 1.0;
+    }
+
+    // -maxDistance flag
+    if (argsData.isFlagSet(MAX_DISTANCE_FLAG))
+    {
+        this->useMaxDistance = true;
+
+        status = argsData.getFlagArgument(MAX_DISTANCE_FLAG, 0, this->maxDistance);
+        CHECK_MSTATUS_AND_RETURN_IT(status);
+    } else {
+        this->useMaxDistance = false;
+        this->maxDistance = DBL_MAX;
     }
 
     // -radius flag
@@ -292,6 +307,7 @@ MSyntax BoneToMeshCommand::getSyntax()
     syntax.addFlag(FILL_PARTIAL_LOOPS_FLAG, FILL_PARTIAL_LOOPS_LONG, MSyntax::kLong);
     syntax.addFlag(HELP_FLAG, HELP_LONG, MSyntax::kBoolean);
     syntax.addFlag(LENGTH_FLAG, LENGTH_LONG, MSyntax::kDouble);
+    syntax.addFlag(MAX_DISTANCE_FLAG, MAX_DISTANCE_LONG, MSyntax::kDouble);
     syntax.addFlag(RADIUS_FLAG, RADIUS_LONG, MSyntax::kDouble);
     syntax.addFlag(SUBDIVISIONS_X_FLAG, SUBDIVISIONS_X_LONG, MSyntax::kLong);
     syntax.addFlag(SUBDIVISIONS_Y_FLAG, SUBDIVISIONS_Y_LONG, MSyntax::kLong);
@@ -312,7 +328,6 @@ MStatus BoneToMeshCommand::doIt(const MArgList& argList)
     MStatus status;
 
     MArgDatabase argsData(syntax(), argList, &status);
-    CHECK_MSTATUS_AND_RETURN_IT(status);
 
     status = this->parseArguments(argsData);        
     RETURN_IF_ERROR(status);
@@ -370,6 +385,7 @@ MStatus BoneToMeshCommand::redoIt()
         this->components,
         boneMatrix,
         directionMatrix,
+        this->maxDistance,
         this->boneLength,
         this->subdivisionsX,
         this->subdivisionsY,
@@ -436,16 +452,26 @@ MStatus BoneToMeshCommand::redoIt()
         MPlug inMesh_worldMeshPlug     = fnInMesh.findPlug("worldMesh", false, &status).elementByLogicalIndex(0);
         MPlug bone_worldMatrixPlug     = fnBone.findPlug("worldMatrix", false, &status).elementByLogicalIndex(0);
         
-        MPlug node_inMeshPlug          = fnNode.findPlug("inMesh", false);
-        MPlug node_boneMatrixPlug      = fnNode.findPlug("boneMatrix", false);
-        MPlug node_directionMatrixPlug = fnNode.findPlug("directionMatrix", false);
         MPlug node_boneLengthPlug      = fnNode.findPlug("boneLength", false);
+        MPlug node_boneMatrixPlug      = fnNode.findPlug("boneMatrix", false);
+        MPlug node_directionPlug       = fnNode.findPlug("direction", false);
+        MPlug node_directionMatrixPlug = fnNode.findPlug("directionMatrix", false);
+        MPlug node_inMeshPlug          = fnNode.findPlug("inMesh", false);
+        MPlug node_maxDistancePlug     = fnNode.findPlug("maxDistance", false);
+        MPlug node_outMeshPlug         = fnNode.findPlug("outMesh", false);
         MPlug node_subdivisionsXPlug   = fnNode.findPlug("subdivisionsAxis", false);
         MPlug node_subdivisionsYPlug   = fnNode.findPlug("subdivisionsHeight", false);
-        MPlug node_directionPlug       = fnNode.findPlug("direction", false);
-        MPlug node_outMeshPlug         = fnNode.findPlug("outMesh", false);
+        MPlug node_useMaxDistancePlug  = fnNode.findPlug("useMaxDistance", false);
 
-        MPlug newMesh_inMeshPlug       = fnNewMesh.findPlug("inMesh", false);
+        MPlug newMesh_inMeshPlug       = fnNewMesh.findPlug("inMesh", false, &status);
+
+        if (this->useMaxDistance)
+        {
+            status = node_useMaxDistancePlug.setBool(true);
+            CHECK_MSTATUS_AND_RETURN_IT(status);
+            status = node_maxDistancePlug.setDouble(this->maxDistance);
+            CHECK_MSTATUS_AND_RETURN_IT(status);
+        }
 
         dgMod.connect(inMesh_worldMeshPlug, node_inMeshPlug);
         dgMod.connect(bone_worldMatrixPlug, node_boneMatrixPlug);

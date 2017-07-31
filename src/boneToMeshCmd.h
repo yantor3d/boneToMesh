@@ -49,10 +49,12 @@ private:
     double              boneLength;
     bool                constructionHistory;
     int                 fillPartialLoopsMethod;
-    bool                showHelp;
+    double              maxDistance;
     double              radius;
+    bool                showHelp;
     int                 subdivisionsX;
     int                 subdivisionsY;
+    bool                useMaxDistance;
     bool                useWorldDirection;
 
     MObject             undoCreatedMesh;

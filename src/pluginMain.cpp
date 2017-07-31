@@ -16,7 +16,7 @@
 
 
 const char* AUTHOR = "Ryan Porter";
-const char* VERSION = "0.2.0";
+const char* VERSION = "0.3.0";
 const char* REQUIRED_API_VERSION = "Any";
 
 

@@ -31,16 +31,18 @@
 #include <maya/MStatus.h>
 
 // Input attributes
-MObject BoneToMeshNode::inMesh_attr;
-MObject BoneToMeshNode::components_attr;
-MObject BoneToMeshNode::boneMatrix_attr;
-MObject BoneToMeshNode::directionMatrix_attr;
 MObject BoneToMeshNode::boneLength_attr;
+MObject BoneToMeshNode::boneMatrix_attr;
+MObject BoneToMeshNode::components_attr;
+MObject BoneToMeshNode::direction_attr;
+MObject BoneToMeshNode::directionMatrix_attr;
+MObject BoneToMeshNode::fillPartialLoops_attr;
+MObject BoneToMeshNode::inMesh_attr;
+MObject BoneToMeshNode::maxDistance_attr;
 MObject BoneToMeshNode::subdivisionsAxis_attr;
 MObject BoneToMeshNode::subdivisionsHeight_attr;
-MObject BoneToMeshNode::direction_attr;
-MObject BoneToMeshNode::fillPartialLoops_attr;
 MObject BoneToMeshNode::radius_attr;
+MObject BoneToMeshNode::useMaxDistance_attr;
 
 // Output attributes
 MObject BoneToMeshNode::outMesh_attr;
@@ -66,9 +68,12 @@ MStatus BoneToMeshNode::compute(const MPlug &plug, MDataBlock &dataBlock)
     short   direction          = dataBlock.inputValue(direction_attr).asShort();
     MMatrix directionMatrix    = MFnMatrixData(dataBlock.inputValue(directionMatrix_attr).data()).matrix();
     short   fillPartialLoops   = dataBlock.inputValue(fillPartialLoops_attr).asShort();
+    double  maxDistance        = dataBlock.inputValue(maxDistance_attr).asDouble();
     double  radius             = dataBlock.inputValue(radius_attr).asDouble();
     uint    subdivisionsAxis   = (uint) std::max(4, dataBlock.inputValue(subdivisionsAxis_attr).asLong());
     uint    subdivisionsHeight = (uint) std::max(2, dataBlock.inputValue(subdivisionsHeight_attr).asLong());
+    bool    useMaxDistance     = dataBlock.inputValue(useMaxDistance_attr).asBool();
+
     MObject components = this->unpackComponentList(componentsList);
 
     MDataHandle outMeshHandle = dataBlock.outputValue(outMesh_attr);
@@ -77,6 +82,8 @@ MStatus BoneToMeshNode::compute(const MPlug &plug, MDataBlock &dataBlock)
     MObject outMesh = outMeshData.create(&status);
     CHECK_MSTATUS_AND_RETURN_IT(status);
 
+    maxDistance = useMaxDistance ? maxDistance : DBL_MAX;
+    
     if (inMesh.isNull())
     {
         return MStatus::kFailure;
@@ -86,6 +93,7 @@ MStatus BoneToMeshNode::compute(const MPlug &plug, MDataBlock &dataBlock)
             components,
             boneMatrix, 
             directionMatrix,
+            maxDistance,
             boneLength, 
             subdivisionsAxis, 
             subdivisionsHeight, 
@@ -203,20 +211,31 @@ MStatus BoneToMeshNode::initialize()
     numAttr.setMin(1);
     numAttr.setKeyable(true);
 
+    maxDistance_attr = numAttr.create("maxDistance", "md", MFnNumericData::kDouble, 1.0, &status);
+    CHECK_MSTATUS_AND_RETURN_IT(status);
+    numAttr.setMin(0.0);
+    numAttr.setKeyable(true);
+
+    useMaxDistance_attr = numAttr.create("useMaxDistance", "umd", MFnNumericData::kBoolean, false, &status);
+    CHECK_MSTATUS_AND_RETURN_IT(status);
+    numAttr.setKeyable(true);
+
     outMesh_attr = typedAttr.create("outMesh", "om", MFnData::kMesh, MObject::kNullObj, &status);
     CHECK_MSTATUS_AND_RETURN_IT(status);
     typedAttr.setStorable(false);
 
-    addAttribute(inMesh_attr);
     addAttribute(boneLength_attr);
     addAttribute(boneMatrix_attr);
     addAttribute(components_attr);
     addAttribute(direction_attr);
     addAttribute(directionMatrix_attr);
     addAttribute(fillPartialLoops_attr);
+    addAttribute(inMesh_attr);
+    addAttribute(maxDistance_attr);
     addAttribute(radius_attr);
     addAttribute(subdivisionsAxis_attr);
     addAttribute(subdivisionsHeight_attr);
+    addAttribute(useMaxDistance_attr);
     addAttribute(outMesh_attr);
 
     attributeAffects(inMesh_attr, outMesh_attr);
@@ -229,6 +248,8 @@ MStatus BoneToMeshNode::initialize()
     attributeAffects(radius_attr, outMesh_attr);
     attributeAffects(subdivisionsAxis_attr, outMesh_attr);
     attributeAffects(subdivisionsHeight_attr, outMesh_attr);
+    attributeAffects(maxDistance_attr, outMesh_attr);
+    attributeAffects(useMaxDistance_attr, outMesh_attr);
 
     return MStatus::kSuccess;
 }

@@ -40,6 +40,7 @@ MStatus boneToMesh(
     const MObject &components,
     const MMatrix &boneMatrix, 
     const MMatrix &directionMatrix, 
+    const double maxDistance,
     const double boneLength, 
     const uint subdivisionsAxis, 
     const uint subdivisionsHeight, 
@@ -87,7 +88,7 @@ MStatus boneToMesh(
     MFloatPoint raySource; 
     MFloatVector rayDirection;
 
-    float maxParams = (float) 9001.0;
+    float maxParams = (float) maxDistance;
     float tolerance = (float) 1e-6;
 
     uint numPoints = subdivisionsAxis * subdivisionsHeight;
@@ -134,7 +135,7 @@ MStatus boneToMesh(
 
         for (uint sa = 0; sa < subdivisionsAxis; sa++)
         {
-            double a = (2.0 * M_PI) * (float(sa) / float(subdivisionsAxis - 1));
+            double a = (2.0 * M_PI) * (float(sa) / float(subdivisionsAxis));
             
             rayDirection = MFloatVector(projectionVector.rotateBy(longAxis, a) * dMatrix);
             MFloatPointArray hitPoints;
@@ -275,7 +276,7 @@ MStatus boneToMesh(
     {
         for (uint sa = 0; sa < subdivisionsAxis; sa++)
         {
-            uint na = (sa + 1) % (subdivisionsAxis - 1);
+            uint na = (sa + 1) % (subdivisionsAxis);
 
             uint idx0 = (sh * subdivisionsAxis) + sa;
             uint idx1 = (sh * subdivisionsAxis) + na;
