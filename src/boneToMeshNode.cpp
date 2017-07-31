@@ -7,6 +7,7 @@
 #include "boneToMeshNode.h"
 
 #include <algorithm>
+#include <cfloat>
 
 #include <maya/MDataBlock.h>
 #include <maya/MDataHandle.h>

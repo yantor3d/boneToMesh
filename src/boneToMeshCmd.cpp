@@ -7,6 +7,7 @@
 #include "boneToMeshCmd.h"
 
 #include <algorithm>
+#include <cfloat>
 
 #include <maya/MArgList.h>
 #include <maya/MArgDatabase.h>
