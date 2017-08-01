@@ -208,7 +208,7 @@ MStatus boneToMesh(
                 }
             }
 
-            if (numHits == 0 || numHits == (subdivisionsAxis - 1)) 
+            if (numHits == 0) 
             {
                 continue; 
             }
