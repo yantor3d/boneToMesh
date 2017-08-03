@@ -136,6 +136,7 @@ MStatus BoneToMeshCommand::parseArguments(MArgDatabase &argsData)
         selection.getDagPath(0, this->inMesh, this->components);
     }
 
+    double tmp = 0.0;
     
     // -axis flag
     if (argsData.isFlagSet(AXIS_FLAG))
@@ -177,29 +178,25 @@ MStatus BoneToMeshCommand::parseArguments(MArgDatabase &argsData)
     {
         status = argsData.getFlagArgument(CONSTRUCTION_HISTORY_FLAG, 0, this->constructionHistory);
         CHECK_MSTATUS_AND_RETURN_IT(status);
-    } else {
-        this->constructionHistory = false;
-    }    
+    }  
 
     // -fillPartialLoops flag
     if (argsData.isFlagSet(FILL_PARTIAL_LOOPS_FLAG))
     {
-        status = argsData.getFlagArgument(FILL_PARTIAL_LOOPS_FLAG, 0, this->fillPartialLoopsMethod);
+        status = argsData.getFlagArgument(FILL_PARTIAL_LOOPS_FLAG, 0, params.fillPartialLoopsMethod);
         CHECK_MSTATUS_AND_RETURN_IT(status);
 
-        if (this->fillPartialLoopsMethod < 0) { this->fillPartialLoopsMethod = 0; }
-        if (this->fillPartialLoopsMethod > 4) { this->fillPartialLoopsMethod = 4; }
-    } else {
-        this->fillPartialLoopsMethod = 3;
+        if (params.fillPartialLoopsMethod < 0) { params.fillPartialLoopsMethod = 0; }
+        if (params.fillPartialLoopsMethod > 4) { params.fillPartialLoopsMethod = 4; }
     }
 
     // -length flag
     if (argsData.isFlagSet(LENGTH_FLAG))
     {
-        status = argsData.getFlagArgument(LENGTH_FLAG, 0, this->boneLength);
+        status = argsData.getFlagArgument(LENGTH_FLAG, 0, tmp);
         CHECK_MSTATUS_AND_RETURN_IT(status);
-    } else {
-        this->boneLength = 1.0;
+
+        params.boneLength = (float) tmp;
     }
 
     // -maxDistance flag
@@ -207,38 +204,33 @@ MStatus BoneToMeshCommand::parseArguments(MArgDatabase &argsData)
     {
         this->useMaxDistance = true;
 
-        status = argsData.getFlagArgument(MAX_DISTANCE_FLAG, 0, this->maxDistance);
+        status = argsData.getFlagArgument(MAX_DISTANCE_FLAG, 0, tmp);
         CHECK_MSTATUS_AND_RETURN_IT(status);
-    } else {
-        this->useMaxDistance = false;
-        this->maxDistance = DBL_MAX;
+
+        params.maxDistance = (float) tmp;
     }
 
     // -radius flag
     if (argsData.isFlagSet(RADIUS_FLAG))
     {
-        status = argsData.getFlagArgument(RADIUS_FLAG, 0, this->radius);
+        status = argsData.getFlagArgument(RADIUS_FLAG, 0, tmp);
         CHECK_MSTATUS_AND_RETURN_IT(status);
-    } else {
-        this->radius = 1.0;
+
+        params.radius = (float) tmp;
     }
 
     // -subdivisionsX (axis) flag
     if (argsData.isFlagSet(SUBDIVISIONS_X_FLAG))
     {
-        status = argsData.getFlagArgument(SUBDIVISIONS_X_FLAG, 0, this->subdivisionsX);
+        status = argsData.getFlagArgument(SUBDIVISIONS_X_FLAG, 0, params.subdivisionsX);
         CHECK_MSTATUS_AND_RETURN_IT(status);
-    } else {
-        this->subdivisionsX = 8;
     }
 
     // -subdivisionsY (height) flag 
     if (argsData.isFlagSet(SUBDIVISIONS_Y_FLAG))
     {
-        status = argsData.getFlagArgument(SUBDIVISIONS_Y_FLAG, 0, this->subdivisionsY);
+        status = argsData.getFlagArgument(SUBDIVISIONS_Y_FLAG, 0, params.subdivisionsY);
         CHECK_MSTATUS_AND_RETURN_IT(status);
-    } else {
-        this->subdivisionsY = 4;
     }
 
     // -world flag
@@ -284,12 +276,12 @@ MStatus BoneToMeshCommand::validateArguments()
         return MStatus::kFailure;
     }
 
-    if (this->subdivisionsX < 3) {
+    if (params.subdivisionsX < 3) {
         MGlobal::displayError("The -subdivisionsX/-sx flag must be at least 3.");
         return MStatus::kFailure;
     }
 
-    if (this->subdivisionsY < 1) {
+    if (params.subdivisionsY < 1) {
         MGlobal::displayError("The -subdivisionsY/-sy flag must be at least 1.");
         return MStatus::kFailure;
     }
@@ -350,11 +342,9 @@ MStatus BoneToMeshCommand::redoIt()
 {
     MStatus status;
 
-    short direction = 0;
-
-    if (this->axis == "x")      { direction = 0; }
-    else if (this->axis == "y") { direction = 1; }
-    else if (this->axis == "z") { direction = 2; }
+    if (this->axis == "x")      { params.direction = 0; }
+    else if (this->axis == "y") { params.direction = 1; }
+    else if (this->axis == "z") { params.direction = 2; }
 
     MFnTransform fnXform(this->boneObj, &status);
     CHECK_MSTATUS_AND_RETURN_IT(status);
@@ -381,18 +371,14 @@ MStatus BoneToMeshCommand::redoIt()
 
     MObject inMeshObj = this->inMesh.node();
 
+    BoneToMeshParams params;
+    
     status = boneToMesh(
         inMeshObj,
         this->components,
         boneMatrix,
         directionMatrix,
-        this->maxDistance,
-        this->boneLength,
-        this->subdivisionsX,
-        this->subdivisionsY,
-        direction,
-        (short) fillPartialLoopsMethod,
-        (float) this->radius,
+        params,
         newMesh
     );
 
@@ -470,7 +456,7 @@ MStatus BoneToMeshCommand::redoIt()
         {
             status = node_useMaxDistancePlug.setBool(true);
             CHECK_MSTATUS_AND_RETURN_IT(status);
-            status = node_maxDistancePlug.setDouble(this->maxDistance);
+            status = node_maxDistancePlug.setDouble((double) params.maxDistance);
             CHECK_MSTATUS_AND_RETURN_IT(status);
         }
 
@@ -484,10 +470,10 @@ MStatus BoneToMeshCommand::redoIt()
         MObject directionMatrixData = fnMatrixData.create(directionMatrix);
         node_directionMatrixPlug.setMObject(directionMatrixData);
 
-        node_boneLengthPlug.setDouble(boneLength);
-        status = node_subdivisionsXPlug.setInt(subdivisionsX);
-        status = node_subdivisionsYPlug.setInt(subdivisionsY);
-        node_directionPlug.setShort(direction);
+        node_boneLengthPlug.setDouble((double) params.boneLength);
+        status = node_subdivisionsXPlug.setInt(params.subdivisionsX);
+        status = node_subdivisionsYPlug.setInt(params.subdivisionsY);
+        node_directionPlug.setShort(params.direction);
 
         status = dgMod.connect(node_outMeshPlug, newMesh_inMeshPlug);
         CHECK_MSTATUS_AND_RETURN_IT(status);

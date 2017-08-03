@@ -62,29 +62,32 @@ MStatus BoneToMeshNode::compute(const MPlug &plug, MDataBlock &dataBlock)
         return MStatus::kUnknownParameter;
     }
 
+    BoneToMeshParams params;
+
     MObject inMesh             = dataBlock.inputValue(inMesh_attr).data();
-    double  boneLength         = dataBlock.inputValue(boneLength_attr).asDouble();
     MMatrix boneMatrix         = MFnMatrixData(dataBlock.inputValue(boneMatrix_attr).data()).matrix();
     MObject componentsList     = dataBlock.inputValue(components_attr).data();
-    short   direction          = dataBlock.inputValue(direction_attr).asShort();
     MMatrix directionMatrix    = MFnMatrixData(dataBlock.inputValue(directionMatrix_attr).data()).matrix();
-    short   fillPartialLoops   = dataBlock.inputValue(fillPartialLoops_attr).asShort();
-    double  maxDistance        = dataBlock.inputValue(maxDistance_attr).asDouble();
-    double  radius             = dataBlock.inputValue(radius_attr).asDouble();
-    uint    subdivisionsAxis   = (uint) std::max(4, dataBlock.inputValue(subdivisionsAxis_attr).asLong());
-    uint    subdivisionsHeight = (uint) std::max(2, dataBlock.inputValue(subdivisionsHeight_attr).asLong());
-    bool    useMaxDistance     = dataBlock.inputValue(useMaxDistance_attr).asBool();
 
     MObject components = this->unpackComponentList(componentsList);
+
+    bool useMaxDistance           = dataBlock.inputValue(useMaxDistance_attr).asBool();
+
+    params.boneLength             = (float) dataBlock.inputValue(boneLength_attr).asDouble();
+    params.direction              = dataBlock.inputValue(direction_attr).asShort();
+    params.fillPartialLoopsMethod = dataBlock.inputValue(fillPartialLoops_attr).asShort();
+    params.maxDistance            = (float) (useMaxDistance ? (dataBlock.inputValue(maxDistance_attr).asDouble()) : DBL_MAX);
+    params.radius                 = (float) dataBlock.inputValue(radius_attr).asDouble();
+    params.subdivisionsX          = (uint) std::max(4, dataBlock.inputValue(subdivisionsAxis_attr).asLong());
+    params.subdivisionsY          = (uint) std::max(2, dataBlock.inputValue(subdivisionsHeight_attr).asLong());
+
 
     MDataHandle outMeshHandle = dataBlock.outputValue(outMesh_attr);
 
     MFnMeshData outMeshData;
     MObject outMesh = outMeshData.create(&status);
     CHECK_MSTATUS_AND_RETURN_IT(status);
-
-    maxDistance = useMaxDistance ? maxDistance : DBL_MAX;
-    
+   
     if (inMesh.isNull())
     {
         return MStatus::kFailure;
@@ -94,13 +97,7 @@ MStatus BoneToMeshNode::compute(const MPlug &plug, MDataBlock &dataBlock)
             components,
             boneMatrix, 
             directionMatrix,
-            maxDistance,
-            boneLength, 
-            subdivisionsAxis, 
-            subdivisionsHeight, 
-            direction, 
-            fillPartialLoops,
-            (float) radius,
+            params,
             outMesh
         );
         CHECK_MSTATUS_AND_RETURN_IT(status);

@@ -6,6 +6,8 @@
 #ifndef YANTOR_3D_BONE_TO_MESH_CMD_H
 #define YANTOR_3D_BONE_TO_MESH_CMD_H
 
+#include "boneToMesh.h"
+
 #include <maya/MArgDatabase.h>
 #include <maya/MArgList.h>
 #include <maya/MDagPath.h>
@@ -46,16 +48,13 @@ private:
 
     MString             axis;
     MObject             boneObj;
-    double              boneLength;
-    bool                constructionHistory;
-    int                 fillPartialLoopsMethod;
-    double              maxDistance;
-    double              radius;
-    bool                showHelp;
-    int                 subdivisionsX;
-    int                 subdivisionsY;
-    bool                useMaxDistance;
-    bool                useWorldDirection;
+
+    BoneToMeshParams    params;
+
+    bool                constructionHistory = false;
+    bool                showHelp = false;
+    bool                useMaxDistance = false;
+    bool                useWorldDirection = false;
 
     MObject             undoCreatedMesh;
     MObject             undoCreatedNode;
