@@ -290,6 +290,10 @@ MStatus createMesh(BoneToMeshParams &params, BoneToMeshProjection &proj, MObject
     int numVertices = 0;
     int numPolygons = 0;
 
+    // Face order - clockwise vs counter-clockwise
+    int cw = (int) params.boneLength >= 0;
+    int cc = (int) params.boneLength < 0;
+
     for (uint sh = 0; sh < params.subdivisionsY; sh++)
     {
         for (uint sa = 0; sa < params.subdivisionsX; sa++)
@@ -322,10 +326,12 @@ MStatus createMesh(BoneToMeshParams &params, BoneToMeshProjection &proj, MObject
 
             if (vtx0 == -1 || vtx1 == -1 || vtx2 == -1 || vtx3 == -1) { continue; }        
 
-            polygonConnects[(numPolygons * 4) + 0] = vtx0;
-            polygonConnects[(numPolygons * 4) + 1] = vtx1;
-            polygonConnects[(numPolygons * 4) + 2] = vtx3;
-            polygonConnects[(numPolygons * 4) + 3] = vtx2;
+            // (vtx# * clockwise) + (vtx# * counter-clockwise) 
+            // to avoid the if branch
+            polygonConnects[(numPolygons * 4) + 0] = (vtx0 * cw) + (vtx0 * cc);
+            polygonConnects[(numPolygons * 4) + 1] = (vtx1 * cw) + (vtx2 * cc);
+            polygonConnects[(numPolygons * 4) + 2] = (vtx3 * cw) + (vtx3 * cc);
+            polygonConnects[(numPolygons * 4) + 3] = (vtx2 * cw) + (vtx1 * cc);
 
             numPolygons++; 
         }
