@@ -20,13 +20,13 @@
 
 struct BoneToMeshParams
 {
-    float  maxDistance            = FLT_MAX;
-    float  boneLength             = 1.0;
+    double maxDistance            = FLT_MAX;
+    double boneLength             = 1.0;
     uint   subdivisionsX          = 8;
     uint   subdivisionsY          = 4;
     int    direction              = 0;
     int    fillPartialLoopsMethod = 0;
-    float  radius                 = 1.0;
+    double  radius                = 1.0;
 };
 
 struct BoneToMeshProjection

@@ -154,6 +154,7 @@ MStatus projectBoneToMesh(
     }
 
     float tolerance = (float) 1e-6;
+    float maxParams = (float) params.maxDistance; 
 
     proj.indices.resize(proj.maxVertices, -1);
     proj.points.resize(proj.maxVertices);
@@ -172,7 +173,7 @@ MStatus projectBoneToMesh(
                 NULL,           // tri Ids
                 true,           // sort ids 
                 MSpace::kObject,// space
-                params.maxDistance,
+                maxParams,
                 false,          // test both directions
                 &accelParams,   // acceleration parameters
                 true,           // sort hits
@@ -243,7 +244,7 @@ MStatus fillPartialLoops(BoneToMeshParams &params, BoneToMeshProjection &proj)
             switch(params.fillPartialLoopsMethod)
             {
                 case FILL_AVERAGE: rayLength /= float(numHits); break;
-                case FILL_RADIUS:  rayLength = params.radius;   break;
+                case FILL_RADIUS:  rayLength = (float) params.radius;   break;
             }
 
             for (uint sa = 0; sa < params.subdivisionsX; sa++)

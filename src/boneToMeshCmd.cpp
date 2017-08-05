@@ -135,8 +135,6 @@ MStatus BoneToMeshCommand::parseArguments(MArgDatabase &argsData)
 
         selection.getDagPath(0, this->inMesh, this->components);
     }
-
-    double tmp = 0.0;
     
     // -axis flag
     if (argsData.isFlagSet(AXIS_FLAG))
@@ -193,10 +191,8 @@ MStatus BoneToMeshCommand::parseArguments(MArgDatabase &argsData)
     // -length flag
     if (argsData.isFlagSet(LENGTH_FLAG))
     {
-        status = argsData.getFlagArgument(LENGTH_FLAG, 0, tmp);
+        status = argsData.getFlagArgument(LENGTH_FLAG, 0, params.boneLength);
         CHECK_MSTATUS_AND_RETURN_IT(status);
-
-        params.boneLength = (float) tmp;
     }
 
     // -maxDistance flag
@@ -204,19 +200,15 @@ MStatus BoneToMeshCommand::parseArguments(MArgDatabase &argsData)
     {
         this->useMaxDistance = true;
 
-        status = argsData.getFlagArgument(MAX_DISTANCE_FLAG, 0, tmp);
+        status = argsData.getFlagArgument(MAX_DISTANCE_FLAG, 0, params.maxDistance);
         CHECK_MSTATUS_AND_RETURN_IT(status);
-
-        params.maxDistance = (float) tmp;
     }
 
     // -radius flag
     if (argsData.isFlagSet(RADIUS_FLAG))
     {
-        status = argsData.getFlagArgument(RADIUS_FLAG, 0, tmp);
+        status = argsData.getFlagArgument(RADIUS_FLAG, 0, params.radius);
         CHECK_MSTATUS_AND_RETURN_IT(status);
-
-        params.radius = (float) tmp;
     }
 
     // -subdivisionsX (axis) flag
@@ -334,7 +326,9 @@ MStatus BoneToMeshCommand::doIt(const MArgList& argList)
     status = this->validateArguments();
     RETURN_IF_ERROR(status);
 
-    return this->redoIt();
+    status = this->redoIt();
+
+    return status;
 }
 
 
@@ -370,8 +364,6 @@ MStatus BoneToMeshCommand::redoIt()
     MDagPath::getAPathTo(newMesh, parentTransform);
 
     MObject inMeshObj = this->inMesh.node();
-
-    BoneToMeshParams params;
     
     status = boneToMesh(
         inMeshObj,
@@ -400,7 +392,7 @@ MStatus BoneToMeshCommand::redoIt()
 
     this->appendToResult(parentTransform.partialPathName());
 
-    if (constructionHistory)
+    if (this->constructionHistory)
     {
         MDGModifier dgMod;
 
@@ -456,7 +448,7 @@ MStatus BoneToMeshCommand::redoIt()
         {
             status = node_useMaxDistancePlug.setBool(true);
             CHECK_MSTATUS_AND_RETURN_IT(status);
-            status = node_maxDistancePlug.setDouble((double) params.maxDistance);
+            status = node_maxDistancePlug.setDouble(params.maxDistance);
             CHECK_MSTATUS_AND_RETURN_IT(status);
         }
 
@@ -470,10 +462,12 @@ MStatus BoneToMeshCommand::redoIt()
         MObject directionMatrixData = fnMatrixData.create(directionMatrix);
         node_directionMatrixPlug.setMObject(directionMatrixData);
 
-        node_boneLengthPlug.setDouble((double) params.boneLength);
+        status = node_boneLengthPlug.setDouble(params.boneLength);
+        CHECK_MSTATUS_AND_RETURN_IT(status);
         status = node_subdivisionsXPlug.setInt(params.subdivisionsX);
         status = node_subdivisionsYPlug.setInt(params.subdivisionsY);
-        node_directionPlug.setShort(params.direction);
+        status = node_directionPlug.setShort(params.direction);
+        CHECK_MSTATUS_AND_RETURN_IT(status);
 
         status = dgMod.connect(node_outMeshPlug, newMesh_inMeshPlug);
         CHECK_MSTATUS_AND_RETURN_IT(status);
