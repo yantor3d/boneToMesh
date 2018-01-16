@@ -3,6 +3,8 @@
     You may use, distribute, or modify this code under the terms of the MIT license.
 */
 
+#define NOMINMAX
+
 #include "boneToMesh.h"
 #include "boneToMeshNode.h"
 
